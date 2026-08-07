@@ -3,7 +3,6 @@ package com.example.ratelimiter.service;
 import com.example.ratelimiter.entity.AppUser;
 import com.example.ratelimiter.repository.AppUserRepository;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -12,10 +11,13 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class AppUserDetailsService implements UserDetailsService {
 
     private final AppUserRepository userRepository;
+
+    public AppUserDetailsService(AppUserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {

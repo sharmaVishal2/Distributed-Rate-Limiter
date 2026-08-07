@@ -9,14 +9,12 @@ import com.example.ratelimiter.repository.RateLimitRuleRepository;
 import com.example.ratelimiter.validator.RateLimitRuleValidator;
 import java.time.Instant;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class RateLimitRuleService {
 
@@ -24,6 +22,11 @@ public class RateLimitRuleService {
 
     private final RateLimitRuleRepository ruleRepository;
     private final RateLimitRuleValidator validator;
+
+    public RateLimitRuleService(RateLimitRuleRepository ruleRepository, RateLimitRuleValidator validator) {
+        this.ruleRepository = ruleRepository;
+        this.validator = validator;
+    }
 
     public RateLimitRuleResponse createRule(RateLimitRuleRequest request) {
         validator.validate(request);

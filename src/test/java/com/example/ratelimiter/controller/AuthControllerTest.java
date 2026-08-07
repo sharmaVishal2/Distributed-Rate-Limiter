@@ -66,7 +66,7 @@ class AuthControllerTest {
     @Test
     void login_shouldReturnToken() throws Exception {
         AuthRequest request = new AuthRequest("admin", "adminpass");
-        AuthResponse response = AuthResponse.builder().accessToken("jwt-token").tokenType("Bearer").build();
+        AuthResponse response = new AuthResponse("jwt-token", "Bearer");
 
         when(authService.authenticate(any())).thenReturn(response);
 

@@ -65,7 +65,7 @@ class RateLimitControllerTest {
     @WithMockUser
     void check_shouldReturnAllowedResponse() throws Exception {
         RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
-        RateLimitCheckResponse response = RateLimitCheckResponse.builder().allowed(true).reason("allowed").build();
+        RateLimitCheckResponse response = new RateLimitCheckResponse(true, "allowed");
 
         when(rateLimitService.check(any())).thenReturn(response);
 

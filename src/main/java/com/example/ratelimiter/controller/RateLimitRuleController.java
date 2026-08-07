@@ -5,7 +5,6 @@ import com.example.ratelimiter.dto.RateLimitRuleResponse;
 import com.example.ratelimiter.service.RateLimitRuleService;
 import jakarta.validation.Valid;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,10 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/rules")
-@RequiredArgsConstructor
 public class RateLimitRuleController {
 
     private final RateLimitRuleService ruleService;
+
+    public RateLimitRuleController(RateLimitRuleService ruleService) {
+        this.ruleService = ruleService;
+    }
 
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping

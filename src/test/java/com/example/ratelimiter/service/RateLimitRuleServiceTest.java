@@ -38,18 +38,18 @@ class RateLimitRuleServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         sampleRequest = new RateLimitRuleRequest("client-a", "/api/check", RateLimitAlgorithm.TOKEN_BUCKET, 10, 1, 60, true);
-        sampleRule = RateLimitRule.builder()
-                .id(1L)
-                .clientId("client-a")
-                .endpoint("/api/check")
-                .algorithm(RateLimitAlgorithm.TOKEN_BUCKET)
-                .limit(10)
-                .refillRate(1)
-                .windowSize(60)
-                .enabled(true)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build();
+        sampleRule = new RateLimitRule(
+                1L,
+                "client-a",
+                "/api/check",
+                RateLimitAlgorithm.TOKEN_BUCKET,
+                10,
+                1,
+                60,
+                true,
+                Instant.now(),
+                Instant.now()
+        );
     }
 
     @Test

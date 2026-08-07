@@ -52,11 +52,18 @@ class RateLimitServiceTest {
 
     @Test
     void check_shouldThrowWhenRuleDisabled() {
-        RateLimitRule disabledRule = RateLimitRule.builder()
-                .clientId("client-a").endpoint("/api/check")
-                .algorithm(RateLimitAlgorithm.FIXED_WINDOW_COUNTER)
-                .limit(10).refillRate(1).windowSize(60).enabled(false)
-                .build();
+        RateLimitRule disabledRule = new RateLimitRule(
+                null,
+                "client-a",
+                "/api/check",
+                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
+                10,
+                1,
+                60,
+                false,
+                Instant.now(),
+                Instant.now()
+        );
         when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(disabledRule));
         RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
         assertThrows(RateLimitExceededException.class, () -> rateLimitService.check(request));
@@ -64,11 +71,18 @@ class RateLimitServiceTest {
 
     @Test
     void check_fixedWindow_shouldAllowWhenUnderLimit() {
-        RateLimitRule rule = RateLimitRule.builder()
-                .clientId("client-a").endpoint("/api/check")
-                .algorithm(RateLimitAlgorithm.FIXED_WINDOW_COUNTER)
-                .limit(10).refillRate(1).windowSize(60).enabled(true)
-                .build();
+        RateLimitRule rule = new RateLimitRule(
+                null,
+                "client-a",
+                "/api/check",
+                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
+                10,
+                1,
+                60,
+                true,
+                Instant.now(),
+                Instant.now()
+        );
         when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(rule));
         when(valueOperations.increment(anyString())).thenReturn(1L);
         when(redisTemplate.expireAt(anyString(), any(Instant.class))).thenReturn(true);
@@ -80,11 +94,18 @@ class RateLimitServiceTest {
 
     @Test
     void check_fixedWindow_shouldThrowWhenOverLimit() {
-        RateLimitRule rule = RateLimitRule.builder()
-                .clientId("client-a").endpoint("/api/check")
-                .algorithm(RateLimitAlgorithm.FIXED_WINDOW_COUNTER)
-                .limit(5).refillRate(1).windowSize(60).enabled(true)
-                .build();
+        RateLimitRule rule = new RateLimitRule(
+                null,
+                "client-a",
+                "/api/check",
+                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
+                5,
+                1,
+                60,
+                true,
+                Instant.now(),
+                Instant.now()
+        );
         when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(rule));
         when(valueOperations.increment(anyString())).thenReturn(6L);
         when(redisTemplate.expireAt(anyString(), any(Instant.class))).thenReturn(true);

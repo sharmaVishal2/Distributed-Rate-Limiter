@@ -10,29 +10,32 @@ public final class RateLimitRuleMapper {
     }
 
     public static RateLimitRule toEntity(RateLimitRuleRequest request) {
-        return RateLimitRule.builder()
-                .clientId(request.clientId())
-                .endpoint(request.endpoint())
-                .algorithm(request.algorithm())
-                .limit(request.limit())
-                .refillRate(request.refillRate())
-                .windowSize(request.windowSize())
-                .enabled(request.enabled())
-                .build();
+        return new RateLimitRule(
+                null,
+                request.clientId(),
+                request.endpoint(),
+                request.algorithm(),
+                request.limit(),
+                request.refillRate(),
+                request.windowSize(),
+                request.enabled(),
+                java.time.Instant.now(),
+                java.time.Instant.now()
+        );
     }
 
     public static RateLimitRuleResponse toResponse(RateLimitRule entity) {
-        return RateLimitRuleResponse.builder()
-                .id(entity.getId())
-                .clientId(entity.getClientId())
-                .endpoint(entity.getEndpoint())
-                .algorithm(entity.getAlgorithm())
-                .limit(entity.getLimit())
-                .refillRate(entity.getRefillRate())
-                .windowSize(entity.getWindowSize())
-                .enabled(entity.isEnabled())
-                .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
-                .build();
+        return new RateLimitRuleResponse(
+                entity.getId(),
+                entity.getClientId(),
+                entity.getEndpoint(),
+                entity.getAlgorithm(),
+                entity.getLimit(),
+                entity.getRefillRate(),
+                entity.getWindowSize(),
+                entity.isEnabled(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
     }
 }

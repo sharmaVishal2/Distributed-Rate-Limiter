@@ -29,6 +29,11 @@ A production-ready Spring Boot microservice that provides distributed rate limit
 - `src/main/resources`: application configuration
 - `src/test/java`: unit and controller tests
 
+## Build and Test
+
+- Build the service: `mvn -DskipTests compile`
+- Run all tests: `mvn test`
+
 ## Run Locally with Docker
 
 ```bash

@@ -82,7 +82,7 @@ public class RateLimitService {
             log.warn("Rate limit exceeded for client={} endpoint={} algorithm={}", request.clientId(), request.endpoint(), rule.getAlgorithm());
             throw new RateLimitExceededException("Rate limit exceeded");
         }
-        return RateLimitCheckResponse.builder().allowed(true).reason(reason).build();
+        return new RateLimitCheckResponse(true, reason);
     }
 
     private boolean checkTokenBucket(RateLimitRule rule) {
