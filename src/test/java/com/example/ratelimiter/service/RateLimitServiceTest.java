@@ -1,116 +1,101 @@
 package com.example.ratelimiter.service;
 
 import com.example.ratelimiter.algorithm.RateLimitAlgorithm;
+import com.example.ratelimiter.config.DefaultRateLimitProperties;
 import com.example.ratelimiter.dto.RateLimitCheckRequest;
 import com.example.ratelimiter.entity.RateLimitRule;
 import com.example.ratelimiter.exception.RateLimitExceededException;
 import com.example.ratelimiter.repository.RateLimitRuleRepository;
-import java.util.Collections;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import java.time.Instant;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class RateLimitServiceTest {
 
-    @Mock
-    private RateLimitRuleRepository ruleRepository;
+    @Mock private RateLimitRuleRepository ruleRepository;
+    @Mock private StringRedisTemplate redisTemplate;
+    @Mock private AuditService auditService;
 
-    @Mock
-    private StringRedisTemplate redisTemplate;
-
-    @Mock
-    private AuditService auditService;
-
-    @Mock
-    private ValueOperations<String, String> valueOperations;
-
-    @InjectMocks
     private RateLimitService rateLimitService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        DefaultRateLimitProperties defaults = new DefaultRateLimitProperties();
+        defaults.setLimit(5);
+        defaults.setWindowSeconds(60);
+        defaults.setAlgorithm(RateLimitAlgorithm.FIXED_WINDOW_COUNTER);
+        rateLimitService = new RateLimitService(ruleRepository, redisTemplate, auditService, defaults);
     }
 
     @Test
-    void check_shouldThrowWhenNoRuleExists() {
-        when(ruleRepository.findByClientId("client-a")).thenReturn(Collections.emptyList());
+    void defaultFixedWindow_allowsFirstFiveAndRejectsSixth() {
         RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
-        assertThrows(RateLimitExceededException.class, () -> rateLimitService.check(request));
+        when(ruleRepository.findByClientId("client-a")).thenReturn(List.of());
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(1L, 1L, 1L, 1L, 1L, 0L);
+
+        for (int requestNumber = 0; requestNumber < 5; requestNumber++) {
+            assertTrue(rateLimitService.check(request).isAllowed());
+        }
+
+        RateLimitExceededException exception = assertThrows(RateLimitExceededException.class,
+                () -> rateLimitService.check(request));
+        assertEquals("Rate limit exceeded. Maximum 5 requests allowed.", exception.getMessage());
+        assertEquals(60, exception.getRetryAfter());
     }
 
     @Test
-    void check_shouldThrowWhenRuleDisabled() {
-        RateLimitRule disabledRule = new RateLimitRule(
-                null,
-                "client-a",
-                "/api/check",
-                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
-                10,
-                1,
-                60,
-                false,
-                Instant.now(),
-                Instant.now()
-        );
-        when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(disabledRule));
+    void fixedWindow_allowsRequestAfterRedisCounterExpires() {
         RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
+        when(ruleRepository.findByClientId("client-a")).thenReturn(List.of());
+        // The final 1 represents Redis creating a fresh counter after its 60-second TTL expires.
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(0L, 1L);
+
         assertThrows(RateLimitExceededException.class, () -> rateLimitService.check(request));
+        assertTrue(rateLimitService.check(request).isAllowed());
     }
 
     @Test
-    void check_fixedWindow_shouldAllowWhenUnderLimit() {
-        RateLimitRule rule = new RateLimitRule(
-                null,
-                "client-a",
-                "/api/check",
-                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
-                10,
-                1,
-                60,
-                true,
-                Instant.now(),
-                Instant.now()
-        );
+    void defaultFixedWindow_usesIndependentRedisKeysForDifferentClients() {
+        RateLimitCheckRequest firstClient = new RateLimitCheckRequest("client-a", "/api/check");
+        RateLimitCheckRequest secondClient = new RateLimitCheckRequest("client-b", "/api/check");
+        when(ruleRepository.findByClientId("client-a")).thenReturn(List.of());
+        when(ruleRepository.findByClientId("client-b")).thenReturn(List.of());
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class))).thenReturn(1L);
+
+        rateLimitService.check(firstClient);
+        rateLimitService.check(secondClient);
+
+        ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
+        verify(redisTemplate, org.mockito.Mockito.times(2))
+                .execute(any(DefaultRedisScript.class), keys.capture(), any(Object[].class));
+        assertTrue(keys.getAllValues().get(0).getFirst().contains("client-a"));
+        assertTrue(keys.getAllValues().get(1).getFirst().contains("client-b"));
+    }
+
+    @Test
+    void configuredRule_takesPrecedenceOverDefault() {
+        RateLimitRule rule = new RateLimitRule(null, "client-a", "/api/check",
+                RateLimitAlgorithm.FIXED_WINDOW_COUNTER, 10, 1, 60, true, Instant.now(), Instant.now());
         when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(rule));
-        when(valueOperations.increment(anyString())).thenReturn(1L);
-        when(redisTemplate.expireAt(anyString(), any(Instant.class))).thenReturn(true);
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class))).thenReturn(1L);
 
-        RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
-        var response = rateLimitService.check(request);
-        assertTrue(response.isAllowed());
-    }
-
-    @Test
-    void check_fixedWindow_shouldThrowWhenOverLimit() {
-        RateLimitRule rule = new RateLimitRule(
-                null,
-                "client-a",
-                "/api/check",
-                RateLimitAlgorithm.FIXED_WINDOW_COUNTER,
-                5,
-                1,
-                60,
-                true,
-                Instant.now(),
-                Instant.now()
-        );
-        when(ruleRepository.findByClientId("client-a")).thenReturn(List.of(rule));
-        when(valueOperations.increment(anyString())).thenReturn(6L);
-        when(redisTemplate.expireAt(anyString(), any(Instant.class))).thenReturn(true);
-
-        RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
-        assertThrows(RateLimitExceededException.class, () -> rateLimitService.check(request));
+        assertTrue(rateLimitService.check(new RateLimitCheckRequest("client-a", "/api/check")).isAllowed());
     }
 }

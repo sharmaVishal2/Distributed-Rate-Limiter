@@ -8,3 +8,6 @@ target/
 .vscode/
 .DS_Store
 application.yml
+frontend/.env
+frontend/dist/
+frontend/node_modules/

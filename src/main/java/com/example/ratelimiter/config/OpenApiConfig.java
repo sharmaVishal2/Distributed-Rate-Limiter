@@ -18,7 +18,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Distributed Rate Limiter API")
-                        .description("Production-ready distributed rate limiting service")
+                        .description("Production-ready distributed rate limiting service. By default, each client may make 5 requests to an endpoint in 60 seconds using the fixed-window counter; request 6 returns HTTP 429 with retryAfter: 60. Client-specific rules configured through /api/rules take precedence.")
                         .version("1.0.0"))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME))
                 .components(new Components()

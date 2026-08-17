@@ -16,6 +16,7 @@ A production-ready Spring Boot microservice that provides distributed rate limit
 
 - Multiple algorithms: Token Bucket, Fixed Window Counter, Sliding Window Log
 - Client-specific configurable rules
+- Default test rule: 5 requests per client per endpoint every 60 seconds (fixed window); the 6th returns HTTP 429 and the Redis counter expires automatically
 - Redis-backed atomic counters and Lua scripts
 - Admin-only rule management
 - Audit log for allowed and blocked requests
@@ -68,6 +69,12 @@ curl -X POST http://localhost:8080/api/rules \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"clientId":"client-a","endpoint":"/api/check","algorithm":"TOKEN_BUCKET","limit":10,"refillRate":1,"windowSize":60,"enabled":true}'
+```
+
+Without a client-specific rule, `POST /api/check` uses the default `FIXED_WINDOW_COUNTER` rule: 5 requests per client and endpoint in 60 seconds. The sixth request returns:
+
+```json
+{"status":429,"error":"Too Many Requests","message":"Rate limit exceeded. Maximum 5 requests allowed.","retryAfter":60}
 ```
 
 ## Future Improvements

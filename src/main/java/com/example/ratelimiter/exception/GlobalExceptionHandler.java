@@ -15,7 +15,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException ex, HttpServletRequest request) {
-        return buildResponse(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase());
+        body.put("message", ex.getMessage());
+        body.put("retryAfter", ex.getRetryAfter());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfter()))
+                .body(body);
     }
 
     @ExceptionHandler(NotFoundException.class)

@@ -3,6 +3,7 @@ package com.example.ratelimiter.controller;
 import com.example.ratelimiter.config.SecurityConfig;
 import com.example.ratelimiter.dto.RateLimitCheckRequest;
 import com.example.ratelimiter.dto.RateLimitCheckResponse;
+import com.example.ratelimiter.exception.RateLimitExceededException;
 import com.example.ratelimiter.security.JwtAuthenticationEntryPoint;
 import com.example.ratelimiter.security.JwtAuthenticationFilter;
 import com.example.ratelimiter.security.JwtTokenProvider;
@@ -25,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -88,6 +90,25 @@ class RateLimitControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser
+    void check_shouldReturn429WithRetryAfterWhenLimitExceeded() throws Exception {
+        RateLimitCheckRequest request = new RateLimitCheckRequest("client-a", "/api/check");
+        doThrow(new RateLimitExceededException("Rate limit exceeded. Maximum 5 requests allowed.", 60))
+                .when(rateLimitService).check(any());
+
+        mockMvc.perform(post("/api/check")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "60"))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.error").value("Too Many Requests"))
+                .andExpect(jsonPath("$.message").value("Rate limit exceeded. Maximum 5 requests allowed."))
+                .andExpect(jsonPath("$.retryAfter").value(60));
     }
 
     @Test
