@@ -7,7 +7,7 @@ target/
 .idea/
 .vscode/
 .DS_Store
-application.yml
+application-prod.yml
 frontend/.env
 frontend/dist/
 frontend/node_modules/

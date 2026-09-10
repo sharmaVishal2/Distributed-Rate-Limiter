@@ -1,68 +1,146 @@
 # Distributed Rate Limiter Service
 
-A production-ready Spring Boot microservice that provides distributed rate limiting using PostgreSQL and Redis.
-
-## Architecture
-
-- Spring Boot 3 + Java 21
-- Spring Data JPA for persistence
-- PostgreSQL for rule storage and audit history
-- Redis for runtime counters and distributed rate limiter state
-- JWT security with admin/user RBAC
-- Swagger / OpenAPI documentation
-- Docker Compose for local deployment
+A production-ready distributed rate limiting backend built with Spring Boot, Redis, and PostgreSQL. Supports multiple rate limiting algorithms with shared state across application instances. No frontend required — all APIs are explorable via Swagger UI.
 
 ## Features
 
-- Multiple algorithms: Token Bucket, Fixed Window Counter, Sliding Window Log
-- Client-specific configurable rules
-- Default test rule: 5 requests per client per endpoint every 60 seconds (fixed window); the 6th returns HTTP 429 and the Redis counter expires automatically
-- Redis-backed atomic counters and Lua scripts
-- Admin-only rule management
-- Audit log for allowed and blocked requests
-- Metrics endpoint for monitoring
-- JWT authentication with role-based access control
-- Health check and observability-ready design
+- Distributed rate limiting backed by Redis (shared state across all instances)
+- Three algorithms: Token Bucket, Fixed Window Counter, Sliding Window Log
+- Atomic Lua scripts for race-condition-free Redis operations
+- Client-specific configurable rules stored in PostgreSQL
+- Default rule: 5 requests per client per endpoint per 60 seconds (Fixed Window)
+- JWT authentication with admin/user RBAC
+- Admin-only rule management (`ROLE_ADMIN`)
+- Audit log for every allowed and blocked request
+- Metrics endpoint (top clients, top endpoints, allowed/blocked counts)
+- Spring Boot Actuator health endpoint
+- Swagger / OpenAPI UI for live API exploration
+- Docker Compose for local deployment
+- Environment-variable-driven configuration (no hardcoded secrets)
 
-## Folder Structure
+## Architecture
 
-- `src/main/java`: service source code
-- `src/main/resources`: application configuration
-- `src/test/java`: unit and controller tests
+```
+Client Request
+      |
+      v
+Spring Boot Application  (one or more instances)
+      |
+      +---> Redis          (shared atomic rate-limit counters via Lua scripts)
+      |
+      +---> PostgreSQL     (rate limit rules, audit log, users)
+```
 
-## Build and Test
+Redis is the source of truth for all rate-limit decisions. Every instance executes the same Lua scripts against the same Redis keys, so horizontal scaling does not break rate limiting — a client's counter is shared across all running instances.
 
-- Build the service: `mvn -DskipTests compile`
-- Run all tests: `mvn test`
+## Local Setup
 
-## Run Locally with Docker
+### Prerequisites
+
+- Docker and Docker Compose
+
+### Run with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-The service will be available at `http://localhost:8080`.
+The service starts at `http://localhost:8080`.
 
-## API Endpoints
+Default credentials seeded on first start:
 
-- `POST /api/auth/login`
-- `POST /api/rules`
-- `PUT /api/rules/{id}`
-- `DELETE /api/rules/{id}`
-- `GET /api/rules`
-- `GET /api/rules/{id}`
-- `POST /api/check`
-- `GET /api/metrics`
-- `GET /actuator/health`
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
+| Username | Password  | Role       |
+|----------|-----------|------------|
+| admin    | adminpass | ROLE_ADMIN |
+| user     | userpass  | ROLE_USER  |
 
-## Sample Requests
+### Run without Docker (requires local PostgreSQL and Redis)
+
+```bash
+export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/rate_limiter
+export SPRING_DATASOURCE_USERNAME=postgres
+export SPRING_DATASOURCE_PASSWORD=yourpassword
+export SPRING_REDIS_HOST=localhost
+export SPRING_REDIS_PORT=6379
+export JWT_SECRET=your-secret-key-min-32-characters-long
+
+mvn spring-boot:run
+```
+
+## Environment Variables
+
+| Variable                  | Description                              | Default                                        |
+|---------------------------|------------------------------------------|------------------------------------------------|
+| `PORT`                    | HTTP port the application listens on     | `8080`                                         |
+| `SPRING_DATASOURCE_URL`   | PostgreSQL JDBC URL                      | `jdbc:postgresql://localhost:5432/rate_limiter` |
+| `SPRING_DATASOURCE_USERNAME` | PostgreSQL username                   | `postgres`                                     |
+| `SPRING_DATASOURCE_PASSWORD` | PostgreSQL password                   | `postgres`                                     |
+| `SPRING_REDIS_HOST`       | Redis hostname                           | `localhost`                                    |
+| `SPRING_REDIS_PORT`       | Redis port                               | `6379`                                         |
+| `SPRING_REDIS_PASSWORD`   | Redis password (leave empty if none)     | *(empty)*                                      |
+| `JWT_SECRET`              | JWT signing secret (min 32 characters)   | `change-this-secret-in-production-min-32-chars!!` |
+| `JWT_EXPIRATION_MS`       | JWT token expiry in milliseconds         | `3600000` (1 hour)                             |
+| `CORS_ALLOWED_ORIGINS`    | Comma-separated list of allowed origins  | `http://localhost:5173,http://localhost:8080`  |
+
+**Never commit real secret values. Set all secrets via environment variables in your deployment platform.**
+
+## API Documentation
+
+Swagger UI (interactive, no frontend needed):
+```
+http://localhost:8080/swagger-ui/index.html
+```
+
+OpenAPI JSON spec:
+```
+http://localhost:8080/v3/api-docs
+```
+
+Health check:
+```
+http://localhost:8080/actuator/health
+```
+
+Service info:
+```
+http://localhost:8080/
+```
+
+## API Examples
+
+### 1. Login and get JWT token
 
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"adminpass"}'
 ```
+
+Response:
+```json
+{"accessToken":"<jwt>","tokenType":"Bearer"}
+```
+
+### 2. Check rate limit (default rule: 5 req / 60s per client+endpoint)
+
+```bash
+curl -X POST http://localhost:8080/api/check \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"clientId":"client-a","endpoint":"/api/check"}'
+```
+
+Allowed response (HTTP 200):
+```json
+{"allowed":true,"reason":"allowed"}
+```
+
+Blocked response after limit exceeded (HTTP 429):
+```json
+{"status":429,"error":"Too Many Requests","message":"Rate limit exceeded. Maximum 5 requests allowed.","retryAfter":60}
+```
+
+### 3. Create a client-specific rule (admin only)
 
 ```bash
 curl -X POST http://localhost:8080/api/rules \
@@ -71,17 +149,96 @@ curl -X POST http://localhost:8080/api/rules \
   -d '{"clientId":"client-a","endpoint":"/api/check","algorithm":"TOKEN_BUCKET","limit":10,"refillRate":1,"windowSize":60,"enabled":true}'
 ```
 
-Without a client-specific rule, `POST /api/check` uses the default `FIXED_WINDOW_COUNTER` rule: 5 requests per client and endpoint in 60 seconds. The sixth request returns:
+Algorithms: `TOKEN_BUCKET`, `FIXED_WINDOW_COUNTER`, `SLIDING_WINDOW_LOG`
 
-```json
-{"status":429,"error":"Too Many Requests","message":"Rate limit exceeded. Maximum 5 requests allowed.","retryAfter":60}
+### 4. List all rules
+
+```bash
+curl http://localhost:8080/api/rules \
+  -H "Authorization: Bearer <token>"
 ```
 
-## Future Improvements
+### 5. Update a rule
 
-- API key authentication and client onboarding
-- Redis Pub/Sub configuration synchronization
-- Prometheus and Grafana integration
-- CI/CD workflow with GitHub Actions
-- Load testing with k6 or JMeter
-- Extend metrics dashboard and caching layer
+```bash
+curl -X PUT http://localhost:8080/api/rules/1 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"clientId":"client-a","endpoint":"/api/check","algorithm":"SLIDING_WINDOW_LOG","limit":20,"refillRate":1,"windowSize":60,"enabled":true}'
+```
+
+### 6. Delete a rule
+
+```bash
+curl -X DELETE http://localhost:8080/api/rules/1 \
+  -H "Authorization: Bearer <token>"
+```
+
+### 7. View metrics
+
+```bash
+curl http://localhost:8080/api/metrics \
+  -H "Authorization: Bearer <token>"
+```
+
+## Deployment (Render / Railway)
+
+This is a backend-only service. No frontend is needed — use Swagger UI or Postman to demonstrate all APIs.
+
+### Steps
+
+1. Push this repository to GitHub.
+2. Create a new Web Service on [Render](https://render.com) or [Railway](https://railway.app).
+3. Set the build command: `mvn -DskipTests package`
+4. Set the start command: `java -jar target/distributed-rate-limiter-service-0.0.1-SNAPSHOT.jar`
+   - Or use Docker: the included `Dockerfile` works out of the box.
+5. Provision a managed PostgreSQL database and a managed Redis instance on your platform.
+6. Set all required environment variables (see table above) in the platform dashboard.
+7. Deploy. The service will be publicly accessible.
+
+### Docker
+
+Build and run locally:
+```bash
+docker compose up --build
+```
+
+Build image only:
+```bash
+docker build -t distributed-rate-limiter .
+```
+
+Run container with environment variables:
+```bash
+docker run -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/rate_limiter \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=secret \
+  -e SPRING_REDIS_HOST=host \
+  -e SPRING_REDIS_PORT=6379 \
+  -e JWT_SECRET=your-secret-min-32-chars \
+  distributed-rate-limiter
+```
+
+## Build and Test
+
+```bash
+# Compile only
+mvn -DskipTests compile
+
+# Run all tests
+mvn test
+
+# Package JAR
+mvn -DskipTests package
+```
+
+## Rate Limiting Algorithms
+
+| Algorithm              | Description                                                                 |
+|------------------------|-----------------------------------------------------------------------------|
+| `FIXED_WINDOW_COUNTER` | Counts requests in fixed time windows. Simple and fast. Default algorithm.  |
+| `TOKEN_BUCKET`         | Tokens refill at a constant rate. Allows short bursts up to bucket capacity.|
+| `SLIDING_WINDOW_LOG`   | Tracks exact request timestamps. Most accurate, slightly higher Redis cost. |
+
+All algorithms use atomic Redis Lua scripts — no race conditions under concurrent load.

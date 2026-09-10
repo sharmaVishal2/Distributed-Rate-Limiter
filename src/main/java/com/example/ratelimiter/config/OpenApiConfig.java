@@ -17,8 +17,11 @@ public class OpenApiConfig {
     public OpenAPI openAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Distributed Rate Limiter API")
-                        .description("Production-ready distributed rate limiting service. By default, each client may make 5 requests to an endpoint in 60 seconds using the fixed-window counter; request 6 returns HTTP 429 with retryAfter: 60. Client-specific rules configured through /api/rules take precedence.")
+                        .title("Distributed Rate Limiter Service")
+                        .description("A distributed rate limiting service built with Spring Boot and Redis, " +
+                                "supporting multiple rate limiting algorithms and shared rate-limit state " +
+                                "across application instances. Default rule: 5 requests per client per " +
+                                "endpoint in 60 seconds (fixed-window); the 6th request returns HTTP 429.")
                         .version("1.0.0"))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME))
                 .components(new Components()
